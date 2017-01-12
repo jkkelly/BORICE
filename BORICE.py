@@ -18,13 +18,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>
 """
 
-import sys
-import os
 import math
+import os
 import random
-import csv
+import sys
 import time
-from decimal import *
 
 _seed_borice_rand = os.environ.get('BORICE_RAND_SEED')
 if _seed_borice_rand:
@@ -1005,14 +1003,15 @@ class BORICE(object):
     def getStep(self):
         return self.current_step
 
-    def main(self, file_name, locus_model, num_steps = None, burn_in = None, outcrossing_rate_tuning_parameter = 0.05, allele_freq_tuning_parameter = 0.1, initial_outcrossing_rate = 0.5, writeOutput2 = True, writeOutput3 = True, writeOutput4 = True):
+    def main(self, file_name, num_steps = None, burn_in = None, outcrossing_rate_tuning_parameter = 0.05, allele_freq_tuning_parameter = 0.1, initial_outcrossing_rate = 0.5, writeOutput2 = True, writeOutput3 = True, writeOutput4 = True):
         input = open(file_name, 'rU')
         #print writeOutput2, writeOutput3, writeOutput4
         try:
             marker_names, families = parse_csv(input, ',')
         except CSVFileParseException as x:
             sys.exit(str(x))
-
+        # Used to pass in a list of bools for whether or not to use null alleles
+        locus_model = [False] * len(marker_names)
         assert len(marker_names) == len(locus_model)
         # main body of code begins here
         sorted_alleles_all_loci = []
@@ -1551,21 +1550,42 @@ class BORICE(object):
 # required to run BORICE from the command line		
 if __name__ == '__main__':
     Borice = BORICE()
-    dataFileName = sys.argv[1]
-    #locus_model = [bool(int(sys.argv[2])), bool(int(sys.argv[3])), bool(int(sys.argv[4])), bool(int(sys.argv[5])), bool(int(sys.argv[6])), bool(int(sys.argv[7])), bool(int(sys.argv[8])), bool(int(sys.argv[9])), bool(int(sys.argv[10])), bool(int(sys.argv[11]))]
-    locus_model = [bool(int(sys.argv[2])), bool(int(sys.argv[3])), bool(int(sys.argv[4]))]
-    numSteps = int(sys.argv[5])
-    numBurnInSteps = int(sys.argv[6])
-    outcrossingRateTuningParam = float(sys.argv[7])
-    alleleFreqTuningParam = float(sys.argv[8])
-    outcrossingRate = float(sys.argv[9])
-    writeOutput2, writeOutput3, writeOutput4 = True, True, True
+    if len(sys.argv) != 2:
+        sys.exit("BORICE: BORICE now takes a configuration filepath as the only argument. See example_config.INI\n")
+    config_filename = sys.argv[1]
+    # Import SafeConfigParser from Python 2 or 3
     try:
-        writeOutput2 = bool(int(sys.argv[10]))
-        writeOutput3 = bool(int(sys.argv[11]))
-        writeOutput4 = bool(int(sys.argv[12]))
-    except:
-        pass
+        # noinspection PyCompatibility
+        from ConfigParser import ConfigParser, SafeConfigParser
+    except ImportError:
+        # noinspection PyCompatibility,PyUnresolvedReferences
+        from configparser import ConfigParser# pylint: disable=F0401
+        SafeConfigParser = ConfigParser
+    parser = SafeConfigParser()
+    try:
+        parser.read(config_filename)
+        dataFileName = parser.get("BORICE", "data_filepath")
+        if not os.path.isfile(dataFileName):
+            sys.exit('BORICE: data_filepath "{}" not found.\n'.format(dataFileName))
+        locus_model = None # deprecated option for null allele model
+        numSteps = parser.getint("BORICE", "num_steps")
+        if numSteps < 0:
+            sys.exit('BORICE: num_steps must be > 0.\n')
+        numBurnInSteps = parser.getint("BORICE", "num_burnin_steps")
+        if numBurnInSteps < 0:
+            sys.exit('BORICE: num_burnin_steps must be > 0.\n')
+        if numBurnInSteps > numSteps:
+            sys.exit('BORICE: num_burnin_steps must be <= num_steps.\n')
+
+        outcrossingRateTuningParam = parser.getfloat("BORICE", "outcrossing_rate_tuning_param")
+        alleleFreqTuningParam = parser.getfloat("BORICE", "allele_freq_tuning_param")
+        outcrossingRate = parser.getfloat("BORICE", "outcrossing_rate")
+        writeOutput2 = parser.getboolean("BORICE", "write_output_2")
+        writeOutput3 = parser.getboolean("BORICE", "write_output_3")
+        writeOutput4 = parser.getboolean("BORICE", "write_output_4")
+    except Exception as x:
+        sys.stderr.write("\nBORICE: {}\n".format(x))
+        sys.exit("\nBORICE: Error reading config file. See example_config.INI\n")
     sys.stderr.write(repr(dataFileName) + '\n	 ')
     sys.stderr.write(repr(locus_model) + '\n	 ')
     sys.stderr.write(repr(numSteps) + '\n	 ')
@@ -1577,4 +1597,4 @@ if __name__ == '__main__':
     sys.stderr.write(repr(writeOutput3) + '\n	 ')
     sys.stderr.write(repr(writeOutput4) + '\n	 ')
 
-    Borice.main(dataFileName, locus_model, numSteps, numBurnInSteps, outcrossingRateTuningParam, alleleFreqTuningParam, outcrossingRate, writeOutput2, writeOutput3, writeOutput4)
+    Borice.main(dataFileName, numSteps, numBurnInSteps, outcrossingRateTuningParam, alleleFreqTuningParam, outcrossingRate, writeOutput2, writeOutput3, writeOutput4)
